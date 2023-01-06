@@ -1,5 +1,6 @@
 package com.example.citibiketracker;
 
+import androidx.annotation.LongDef;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -22,6 +23,7 @@ import android.widget.CompoundButton;
 import android.widget.SearchView;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.widget.ToggleButton;
 
 import com.android.volley.NetworkError;
@@ -53,13 +55,16 @@ public class MainActivity extends AppCompatActivity {
     TextView textView;
     RecyclerView recyclerView;
     Timer timer = new Timer();
-    ArrayList<Station> EbikeStations = new ArrayList<Station>();
-    ArrayList<Station> FavoriteStations = new ArrayList<Station>();
+    ArrayList<Station> EbikeStations = new ArrayList<>();
+    ArrayList<Station> FavoriteStations = new ArrayList<>();
     ToggleButton switchButton;
-
+    Set<String> favoriteStationIds = new HashSet<>();
+    private Set<String> savedFavoriteStationIds = new HashSet<>();
+    public static final String SHARED_PREFS = "sharedPrefs";
+    public static final String TEXT = "text";
 
     public ArrayList<Station> getFavoriteStations(ArrayList<Station> Stations) {
-        ArrayList<Station> favStations = new ArrayList<Station>();
+        ArrayList<Station> favStations = new ArrayList<>();
         for (Station s : Stations) {
             if (s.getFavorite()) {
                 favStations.add(s);
@@ -138,8 +143,44 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    public void saveData() {
+        FavoriteStations = getFavoriteStations(EbikeStations);
+        for (Station station : FavoriteStations) {
+            favoriteStationIds.add(station.getID());
+        }
+        Log.d("SaveData", favoriteStationIds.toString());
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putStringSet(TEXT, favoriteStationIds);
+
+        editor.apply();
+        Toast.makeText(this, "Favorites Saved", Toast.LENGTH_SHORT).show();
+    }
+
+    public void loadData() {
+        SharedPreferences sharedPreferences = getSharedPreferences(SHARED_PREFS, MODE_PRIVATE);
+        savedFavoriteStationIds = sharedPreferences.getStringSet(TEXT, new HashSet<>());
+        Log.d("LoadData",savedFavoriteStationIds.toString());
+    }
+
+    public void updateFavStations() {
+        for (String stationId : savedFavoriteStationIds) {
+            for (Station station : EbikeStations) {
+                if (station.getID().equals(stationId)) {
+                    FavoriteStations.add(station);
+                    break;
+                }
+            }
+        }
+        Log.d("FavSTationsUpdate", savedFavoriteStationIds.toString());
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
+        loadData();
+        updateFavStations();
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -153,17 +194,6 @@ public class MainActivity extends AppCompatActivity {
 //NOTIFICATION CODE
         //Make requests on load
 
-        NetworkUtils.makeRequest(MainActivity.this, stationInformationUrl, new NetworkUtils.OnResponseListener() {
-            @Override
-            public void onSuccess(JSONObject response) {
-                handleResponseOfStationInfo(response);
-            }
-
-            @Override
-            public void onError(VolleyError error) {
-                Log.e("error", error.toString());
-            }
-        });
         NetworkUtils.makeRequest(MainActivity.this, stationStatusUrl, new NetworkUtils.OnResponseListener() {
             @Override
             public void onSuccess(JSONObject response) {
@@ -175,23 +205,21 @@ public class MainActivity extends AppCompatActivity {
                 Log.e("error", error.toString());
             }
         });
-        SharedPreferences sharedPreferences = getSharedPreferences("prefs", MODE_PRIVATE);
-        Set<String> favoriteStationIds = sharedPreferences.getStringSet("favorite_stations", new HashSet<String>());
-        for (String stationId : favoriteStationIds) {
-            for (Station station : EbikeStations) {
-                if (station.getID().equals(stationId)) {
-                    FavoriteStations.add(station);
-                    break;
-                }
+        NetworkUtils.makeRequest(MainActivity.this, stationInformationUrl, new NetworkUtils.OnResponseListener() {
+            @Override
+            public void onSuccess(JSONObject response) {
+                handleResponseOfStationInfo(response);
             }
-        }
-        Log.d("onCreateFavStations", favoriteStationIds.toString());
-        Log.d("onCreFavStatssecond",FavoriteStations.toString());
 
+            @Override
+            public void onError(VolleyError error) {
+                Log.e("error", error.toString());
+            }
+        });
         switchButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
-            public void onCheckedChanged(CompoundButton compoundButton, boolean isChecked) {
 
+            public void onCheckedChanged(CompoundButton compoundButton, boolean isChecked) {
                 if (isChecked) {
                     recyclerView.setAdapter(new MyAdapter(getApplicationContext(), getFavoriteStations(EbikeStations)));
                 } else {
@@ -230,21 +258,11 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+
     @Override
     protected void onPause() {
         super.onPause();
-
+        saveData();
         // Convert the list of stations to a list of station IDs
-        Set<String> favoriteStationIds = new HashSet<>();
-        FavoriteStations = getFavoriteStations(EbikeStations);
-        for (Station station : FavoriteStations) {
-            favoriteStationIds.add(station.getID());
-        }
-        // Save the list of station IDs to shared preferences
-        SharedPreferences sharedPreferences = getSharedPreferences("prefs", MODE_PRIVATE);
-        SharedPreferences.Editor editor = sharedPreferences.edit();
-        Log.d("favorite_stations", favoriteStationIds.toString());
-        editor.putStringSet("favorite_stations", favoriteStationIds);
-        editor.apply();
     }
 }
